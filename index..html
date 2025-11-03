@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RANGA REDDY SURE | Portfolio</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load Lucide Icons for professional look -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        /* Setting up a dark, modern theme with the Inter font */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0d1117; /* Dark background */
+            color: #c9d1d9; /* Light text color */
+        }
+        .section-heading {
+            border-left: 4px solid #3b82f6; /* Blue accent bar */
+            padding-left: 1rem;
+            color: #ffffff;
+        }
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-left-color: #3b82f6;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            display: none; /* Initially hidden */
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="antialiased">
+    <script>
+        // Gemini API Configuration
+        const apiKey = ""; // API Key is left empty for Canvas runtime
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+        
+        // Function for base64 decoding (required for API integration)
+        function base64ToArrayBuffer(base64) {
+            const binary_string = window.atob(base64);
+            const len = binary_string.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binary_string.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        // --- GEMINI API CORE FUNCTION ---
+        async function fetchGeminiResponse(userQuery, systemPrompt = null, useGrounding = false) {
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+            };
+
+            if (systemPrompt) {
+                payload.systemInstruction = { parts: [{ text: systemPrompt }] };
+            }
+
+            if (useGrounding) {
+                payload.tools = [{ "google_search": {} }];
+            }
+
+            // Exponential backoff retry logic
+            for (let attempt = 0; attempt < 5; attempt++) {
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    const text = result.candidates?.[0]?.content?.parts?.[0]?.text || 'జవాబు అందుబాటులో లేదు. దయచేసి మళ్లీ ప్రయత్నించండి.';
+                    return text;
+
+                } catch (error) {
+                    if (attempt < 4) {
+                        const delay = Math.pow(2, attempt) * 1000;
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    } else {
+                        throw new Error(`API కాల్ విఫలమైంది: ${error.message}`);
+                    }
+                }
+            }
+        }
+        
+        // --- FEATURE 1: COVER LETTER GENERATOR ---
+        async function generateCoverLetter() {
+            const jobTitle = document.getElementById('jobTitleInput').value.trim();
+            const loader = document.getElementById('letterLoader');
+            const outputDiv = document.getElementById('coverLetterOutput');
+            const generateButton = document.getElementById('generateLetterBtn');
+            
+            if (!jobTitle) {
+                outputDiv.innerHTML = '<p class="text-red-400">దయచేసి ఉద్యోగ శీర్షికను (Job Title) నమోదు చేయండి.</p>';
+                return;
+            }
+
+            // Show loading state
+            loader.style.display = 'block';
+            outputDiv.innerHTML = '<p class="text-gray-400">మీ కవర్ లెటర్ రూపొందించబడుతోంది...</p>';
+            generateButton.disabled = true;
+
+            const myProfile = `
+                Name: Ranga Reddy Sure
+                Background: B.Tech ECE, 70%
+                Skills: Python, SQL, Basic C, IoT, AI Prompting, HTML/CSS/JS, Data Analysis, Network Automation, VLSI Design Flow.
+                Key Experience: 2-month Summer Internship in VLSI Design Flow (3rd Year) and 2-month Summer Internship in IoT (2nd Year).
+                Objective: Seeking challenging problem-solving opportunities in Automation or Data/AI.
+                Key Strengths: Adaptable, quick learner, proven expertise through multiple Coursera Certifications (Google, IBM, Cisco).
+            `;
+            
+            const systemPrompt = "Act as a professional career consultant. Based on the provided profile, generate a compelling, professional, one-paragraph cover letter tailored for the requested job title. The letter must highlight both the VLSI and IoT internships and the diverse technical skills (Python, Data, AI, Network Automation). Do not include salutations, addresses, or formal sign-offs. Focus only on the body content.";
+            
+            const userQuery = `Generate a cover letter for the role: "${jobTitle}". Use this profile data: ${myProfile}`;
+
+            try {
+                const generatedText = await fetchGeminiResponse(userQuery, systemPrompt);
+                outputDiv.innerHTML = `<div class="p-4 bg-gray-900 rounded-lg whitespace-pre-wrap"><p class="font-semibold text-white mb-2">💎 కవర్ లెటర్ డ్రాఫ్ట్:</p>${generatedText}</div>`;
+            } catch (error) {
+                outputDiv.innerHTML = `<p class="text-red-400">లోపం: ${error.message}</p>`;
+            } finally {
+                // Hide loading state
+                loader.style.display = 'none';
+                generateButton.disabled = false;
+            }
+        }
+
+        // --- FEATURE 2: SKILLS CLARIFIER ---
+        async function clarifySkill(skill) {
+            const clarifyButton = document.getElementById(`clarify-${skill}`);
+            const resultElement = document.getElementById(`clarify-result-${skill}`);
+            const loader = document.getElementById(`clarify-loader-${skill}`);
+
+            // Show loading state
+            loader.style.display = 'block';
+            clarifyButton.disabled = true;
+            resultElement.innerHTML = '<p class="text-yellow-400 text-sm">వివరణను రూపొందిస్తోంది...</p>';
+
+            const systemPrompt = `You are a professional technical expert. For the given skill, provide a concise, single-sentence summary (max 20 words) that explains its real-world value to a recruiter, using professional language. For example, for 'Python', the output should be: 'Proficient in Python for rapid prototyping, data analysis, and scalable backend automation solutions.'`;
+            
+            const userQuery = `Provide a concise professional summary for the skill: ${skill}.`;
+
+            try {
+                const generatedText = await fetchGeminiResponse(userQuery, systemPrompt);
+                resultElement.innerHTML = `<p class="text-green-300 text-sm mt-1">✓ ${generatedText}</p>`;
+            } catch (error) {
+                resultElement.innerHTML = `<p class="text-red-400 text-sm mt-1">లోపం.</p>`;
+            } finally {
+                // Hide loading state
+                loader.style.display = 'none';
+                clarifyButton.disabled = false;
+            }
+        }
+    </script>
+
+    <!-- Header & Navigation -->
+    <header class="shadow-lg sticky top-0 z-50 bg-gray-900/90 backdrop-blur-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+            <h1 class="text-2xl font-bold text-blue-400">Ranga Reddy Sure</h1>
+            <nav class="hidden md:flex space-x-8 text-sm font-medium">
+                <a href="#about" class="hover:text-blue-400 transition duration-300">About</a>
+                <a href="#skills" class="hover:text-blue-400 transition duration-300">Skills</a>
+                <a href="#internship" class="hover:text-red-400 transition duration-300">Experience</a>
+                <a href="#academics" class="hover:text-blue-400 transition duration-300">Academics</a>
+                <a href="#certs" class="hover:text-blue-400 transition duration-300">Certifications</a>
+                <a href="#gemini" class="hover:text-pink-400 transition duration-300">AI Tools ✨</a>
+                <a href="#contact" class="hover:text-blue-400 transition duration-300">Contact</a>
+            </nav>
+            <!-- Mobile Menu Button (Optional - Keeping it simple for single file) -->
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+
+        <!-- 1. Hero Section -->
+        <section id="hero" class="py-16 md:py-24 text-center rounded-xl bg-gray-800/50 mb-12 shadow-2xl">
+            <div class="mb-6">
+                <!-- Placeholder Avatar/Icon -->
+                <div class="mx-auto w-24 h-24 bg-blue-500 rounded-full flex items-center justify-center text-4xl font-extrabold text-white mb-4">RS</div>
+            </div>
+            <h2 class="text-4xl md:text-6xl font-extrabold text-white mb-3">RANGA REDDY SURE</h2>
+            <p class="text-xl md:text-3xl font-light text-blue-300">B.Tech ECE Student | Automation & Data Enthusiast</p>
+            <p class="mt-4 max-w-2xl mx-auto text-gray-400 text-lg">
+                Seeking an opportunity , which enables to live my passion and offers challenging problem-solving opportunities, promoting me to an accomplished professional.
+            </p>
+        </section>
+
+        <!-- 2. About / Objective Section -->
+        <section id="about" class="py-10 mb-12">
+            <h3 class="section-heading text-3xl font-bold mb-8">About Me</h3>
+            <div class="grid md:grid-cols-2 gap-8">
+                <div class="p-6 bg-gray-800 rounded-lg shadow-xl border border-gray-700">
+                    <h4 class="text-xl font-semibold text-blue-400 mb-3 flex items-center">
+                        <i data-lucide="target" class="w-5 h-5 mr-2"></i> Objective
+                    </h4>
+                    <p class="text-gray-300 leading-relaxed">
+                        Seeking a challenging and rewarding position where I can apply my skills in **Electronics and Programming (Python, VLSI, IoT)** to solve real-world problems. I am eager to learn new technologies and thrive in both team and independent environments, committed to becoming an accomplished professional.
+                    </p>
+                </div>
+                <div class="p-6 bg-gray-800 rounded-lg shadow-xl border border-gray-700">
+                    <h4 class="text-xl font-semibold text-blue-400 mb-3 flex items-center">
+                        <i data-lucide="user-check" class="w-5 h-5 mr-2"></i> Personal Traits
+                    </h4>
+                    <ul class="space-y-2 text-gray-300 list-disc list-inside">
+                        <li>I always look forward to learning new things.</li>
+                        <li>Can easily adapt to new technology and environment.</li>
+                        <li>Able to work with teams as well as independently.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Skills Section -->
+        <section id="skills" class="py-10 mb-12">
+            <h3 class="section-heading text-3xl font-bold mb-8">Technical Proficiency</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+                <!-- Programming Languages -->
+                <div class="p-6 bg-gray-800 rounded-lg shadow-xl border border-gray-700 transform hover:scale-[1.02] transition duration-300">
+                    <h4 class="text-xl font-semibold text-white mb-4 flex items-center">
+                        <i data-lucide="code" class="w-5 h-5 mr-2 text-green-400"></i> Programming & Databases
+                    </h4>
+                    <div class="flex flex-wrap gap-2">
+                        <span class="bg-green-700/50 text-green-300 px-3 py-1 rounded-full text-sm font-medium">Python</span>
+                        <span class="bg-green-700/50 text-green-300 px-3 py-1 rounded-full text-sm font-medium">SQL</span>
+                        <span class="bg-green-700/50 text-green-300 px-3 py-1 rounded-full text-sm font-medium">Basic C</span>
+                    </div>
+                    <button id="clarify-Python" onclick="clarifySkill('Python, Data Analysis, and Automation')" class="mt-3 bg-pink-700/50 text-pink-300 px-3 py-1 rounded-lg text-xs font-semibold hover:bg-pink-700 transition">
+                        ✨ నిపుణుల వివరణ (Automation)
+                    </button>
+                    <div id="clarify-result-Python, Data Analysis, and Automation" class="mt-2 min-h-[20px]"></div>
+                    <div id="clarify-loader-Python, Data Analysis, and Automation" class="spinner mt-2 mx-auto"></div>
+                </div>
+
+                <!-- Web Development & Core -->
+                <div class="p-6 bg-gray-800 rounded-lg shadow-xl border border-gray-700 transform hover:scale-[1.02] transition duration-300">
+                    <h4 class="text-xl font-semibold text-white mb-4 flex items-center">
+                        <i data-lucide="monitor" class="w-5 h-5 mr-2 text-blue-400"></i> Core ECE & Automation
+                    </h4>
+                    <div class="flex flex-wrap gap-2">
+                        <span class="bg-blue-700/50 text-blue-300 px-3 py-1 rounded-full text-sm font-medium">IoT Concepts</span>
+                        <span class="bg-blue-700/50 text-blue-300 px-3 py-1 rounded-full text-sm font-medium">VLSI Design Flow</span>
+                        <span class="bg-blue-700/50 text-blue-300 px-3 py-1 rounded-full text-sm font-medium">Network Automation</span>
+                    </div>
+                </div>
+
+                <!-- Specializations -->
+                <div class="p-6 bg-gray-800 rounded-lg shadow-xl border border-gray-700 transform hover:scale-[1.02] transition duration-300">
+                    <h4 class="text-xl font-semibold text-white mb-4 flex items-center">
+                        <i data-lucide="cpu" class="w-5 h-5 mr-2 text-purple-400"></i> Generative AI & Web Basics
+                    </h4>
+                    <div class="flex flex-wrap gap-2">
+                        <span class="bg-purple-700/50 text-purple-300 px-3 py-1 rounded-full text-sm font-medium">Generative AI Prompting</span>
+                        <span class="bg-purple-700/50 text-purple-300 px-3 py-1 rounded-full text-sm font-medium">Data Analysis Fundamentals</span>
+                        <span class="bg-purple-700/50 text-purple-300 px-3 py-1 rounded-full text-sm font-medium">HTML/CSS/JS</span>
+                    </div>
+                    <button id="clarify-AI" onclick="clarifySkill('Generative AI and Data Analysis Fundamentals')" class="mt-3 bg-pink-700/50 text-pink-300 px-3 py-1 rounded-lg text-xs font-semibold hover:bg-pink-700 transition">
+                        ✨ నిపుణుల వివరణ (AI/Data)
+                    </button>
+                    <div id="clarify-result-Generative AI and Data Analysis Fundamentals" class="mt-2 min-h-[20px]"></div>
+                    <div id="clarify-loader-Generative AI and Data Analysis Fundamentals" class="spinner mt-2 mx-auto"></div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- 4. Internship & Experience Section (UPDATED) -->
+        <section id="internship" class="py-10 mb-12">
+            <h3 class="section-heading text-3xl font-bold mb-8 text-red-400">Internship & Experience (Dual Focus)</h3>
+            <div class="space-y-6">
+                <!-- VLSI Internship (After 3rd Year) -->
+                <div class="p-5 bg-gray-800 rounded-lg shadow-xl border-l-4 border-red-500 hover:bg-gray-700/50 transition duration-300">
+                    <div class="flex justify-between items-start">
+                        <h4 class="text-xl font-semibold text-white">VLSI DESIGN FLOW - Summer Internship (2 Months)</h4>
+                        <span class="bg-red-500 text-white text-xs font-bold px-3 py-1 rounded-full">Apr - Jun 2025 (After 3rd Year)</span>
+                    </div>
+                    <p class="text-red-400 mt-1">BIST Technologies Pvt.Ltd., Vijayawada</p>
+                    <p class="text-gray-400 mt-2">Gained practical knowledge and hands-on experience in the **VLSI (Very Large Scale Integration) Design Flow**, strengthening ECE core concepts for industrial application.</p>
+                </div>
+
+                <!-- IoT Internship (After 2nd Year - UPDATED TO 2 MONTHS) -->
+                <div class="p-5 bg-gray-800 rounded-lg shadow-xl border-l-4 border-orange-500 hover:bg-gray-700/50 transition duration-300">
+                    <div class="flex justify-between items-start">
+                        <h4 class="text-xl font-semibold text-white">Internet of Things (IoT) - Summer Internship (2 Months)</h4>
+                        <span class="bg-orange-500 text-white text-xs font-bold px-3 py-1 rounded-full">May - Jul 2024 (After 2nd Year)</span>
+                    </div>
+                    <p class="text-orange-400 mt-1">EXCELR / Relevant Training Partner (Timeframe assumed)</p>
+                    <p class="text-gray-400 mt-2">Focused on **IoT system architecture**, sensor integration, data acquisition, and implementation of basic smart solutions, reinforcing hardware and networking fundamentals.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. Academic Qualification Section -->
+        <section id="academics" class="py-10 mb-12">
+            <h3 class="section-heading text-3xl font-bold mb-8">Academic Qualification</h3>
+            <div class="space-y-6">
+                <!-- B.Tech ECE -->
+                <div class="p-5 bg-gray-800 rounded-lg shadow-xl border border-gray-700 hover:bg-gray-700/50 transition duration-300">
+                    <div class="flex justify-between items-start">
+                        <h4 class="text-xl font-semibold text-white">B.Tech in Electronics and Communication Engineering (ECE)</h4>
+                        <span class="bg-blue-500 text-white text-xs font-bold px-3 py-1 rounded-full">Pursuing</span>
+                    </div>
+                    <p class="text-blue-400 mt-1">VKR,VNB & AGK College</p>
+                    <p class="text-gray-400 mt-2">Current Academic Percentage: <span class="font-bold text-lg text-white">70%</span></p>
+                </div>
+
+                <!-- Intermediate MPC -->
+                <div class="p-5 bg-gray-800 rounded-lg shadow-xl border border-gray-700 hover:bg-gray-700/50 transition duration-300">
+                    <div class="flex justify-between items-start">
+                        <h4 class="text-xl font-semibold text-white">Intermediate (MPC)</h4>
+                        <span class="text-gray-500 text-xs font-medium px-3 py-1 rounded-full">Completed - 2022</span>
+                    </div>
+                    <p class="text-blue-400 mt-1">CLR Junior College</p>
+                    <p class="text-gray-400 mt-2">Percentage: <span class="font-bold text-lg text-white">63%</span></p>
+                </div>
+
+                <!-- SSC -->
+                <div class="p-5 bg-gray-800 rounded-lg shadow-xl border border-gray-700 hover:bg-gray-700/50 transition duration-300">
+                    <div class="flex justify-between items-start">
+                        <h4 class="text-xl font-semibold text-white">SSC</h4>
+                        <span class="text-gray-500 text-xs font-medium px-3 py-1 rounded-full">Completed - 2020</span>
+                    </div>
+                    <p class="text-blue-400 mt-1">CLR High School</p>
+                    <p class="text-gray-400 mt-2">Percentage: <span class="font-bold text-lg text-white">99%</span></p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. Gemini AI Tools Section -->
+        <section id="gemini" class="py-10 mb-12">
+            <h3 class="section-heading text-3xl font-bold mb-8 flex items-center text-pink-400">
+                <i data-lucide="sparkles" class="w-6 h-6 mr-2"></i> AI Tools (Powered by Gemini)
+            </h3>
+            
+            <!-- Cover Letter Generator -->
+            <div class="p-6 bg-gray-800 rounded-xl shadow-2xl border border-gray-700">
+                <h4 class="text-2xl font-semibold text-white mb-4">💼 కవర్ లెటర్ డ్రాఫ్టర్</h4>
+                <p class="text-gray-400 mb-4">మీ పోర్ట్‌ఫోలియో వివరాలను ఉపయోగించి, మీరు దరఖాస్తు చేయబోయే ఉద్యోగానికి (లేదా ఇంటర్వ్యూకు) తగిన కవర్ లెటర్ డ్రాఫ్ట్‌ను రూపొందించండి.</p>
+                
+                <div class="mb-4">
+                    <label for="jobTitleInput" class="block text-sm font-medium text-gray-300 mb-2">ఉద్యోగ శీర్షిక (Job Title) లేదా లక్ష్యం (ఉదా: Automation Engineer / Data Analyst)</label>
+                    <input type="text" id="jobTitleInput" placeholder="ఉదా: Junior Data Analyst at Google" class="w-full p-3 rounded-lg bg-gray-900 border border-gray-700 text-white focus:ring-blue-500 focus:border-blue-500" />
+                </div>
+                
+                <button id="generateLetterBtn" onclick="generateCoverLetter()" class="flex items-center justify-center px-6 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition duration-300 disabled:opacity-50">
+                    కవర్ లెటర్ రూపొందించండి ✨
+                </button>
+                <div id="letterLoader" class="spinner mt-4"></div>
+                
+                <div id="coverLetterOutput" class="mt-6 p-4 border border-gray-700 rounded-lg min-h-[100px] bg-gray-800/50 text-gray-300">
+                    <!-- Output will appear here -->
+                    ఫలితం ఇక్కడ కనిపిస్తుంది.
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. Certifications Section -->
+        <section id="certs" class="py-10 mb-12">
+            <h3 class="section-heading text-3xl font-bold mb-8">Certifications</h3>
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+
+                <!-- 1. Crash Course on Python (Google) -->
+                <div class="p-6 bg-gray-800 rounded-lg shadow-xl border border-gray-700 flex items-start space-x-4">
+                    <i data-lucide="zap" class="w-6 h-6 text-yellow-400 flex-shrink-0 mt-1"></i>
+                    <div>
+                        <h4 class="text-lg font-semibold text-white">Crash Course on Python</h4>
+                        <p class="text-blue-400 text-sm">Issued by: Google (via Coursera)</p>
+                        <p class="text-gray-500 text-xs mt-1">Foundation in Python programming for automation and scripting.</p>
+                    </div>
+                </div>
+                
+                <!-- 2. Generative AI: Prompt Engineering Basics (IBM) -->
+                <div class="p-6 bg-gray-800 rounded-lg shadow-xl border border-gray-700 flex items-start space-x-4">
+                    <i data-lucide="brain-circuit" class="w-6 h-6 text-pink-400 flex-shrink-0 mt-1"></i>
+                    <div>
+                        <h4 class="text-lg font-semibold text-white">Generative AI: Prompt Engineering Basics</h4>
+                        <p class="text-blue-400 text-sm">Issued by: IBM (via Coursera)</p>
+                        <p class="text-gray-500 text-xs mt-1">Trained in effective prompting and utilizing AI tools for efficient results.</p>
+                    </div>
+                </div>
+
+                <!-- 3. Foundations: Data, Data, Everywhere (Google) -->
+                <div class="p-6 bg-gray-800 rounded-lg shadow-xl border border-gray-700 flex items-start space-x-4">
+                    <i data-lucide="database" class="w-6 h-6 text-red-400 flex-shrink-0 mt-1"></i>
+                    <div>
+                        <h4 class="text-lg font-semibold text-white">Foundations: Data, Data, Everywhere</h4>
+                        <p class="text-blue-400 text-sm">Issued by: Google (via Coursera)</p>
+                        <p class="text-gray-500 text-xs mt-1">Completed the initial course in the Google Data Analytics Professional Certificate.</p>
+                    </div>
+                </div>
+
+                <!-- 4. DevOps for Network Automation (Cisco) -->
+                <div class="p-6 bg-gray-800 rounded-lg shadow-xl border border-gray-700 flex items-start space-x-4">
+                    <i data-lucide="server" class="w-6 h-6 text-teal-400 flex-shrink-0 mt-1"></i>
+                    <div>
+                        <h4 class="text-lg font-semibold text-white">DevOps for Network Automation (NetDevOps)</h4>
+                        <p class="text-blue-400 text-sm">Issued by: Cisco (via Coursera)</p>
+                        <p class="text-gray-500 text-xs mt-1">Expertise in applying DevOps principles to automate network tasks.</p>
+                    </div>
+                </div>
+
+                <!-- 5. Internet of Things (IoT) (EXCELR) -->
+                <div class="p-6 bg-gray-800 rounded-lg shadow-xl border border-gray-700 flex items-start space-x-4">
+                    <i data-lucide="circuit-board" class="w-6 h-6 text-orange-400 flex-shrink-0 mt-1"></i>
+                    <div>
+                        <h4 class="text-lg font-semibold text-white">Certificate of Participation in Internet of things</h4>
+                        <p class="text-blue-400 text-sm">Issued by: EXCELR</p>
+                        <p class="text-gray-500 text-xs mt-1">Core knowledge in IoT concepts, hardware interfacing, and data connectivity.</p>
+                    </div>
+                </div>
+
+                <!-- 6. Viksit Bharat Young Leaders Dialogue (MYBharat) -->
+                <div class="p-6 bg-gray-800 rounded-lg shadow-xl border border-gray-700 flex items-start space-x-4">
+                    <i data-lucide="award" class="w-6 h-6 text-yellow-300 flex-shrink-0 mt-1"></i>
+                    <div>
+                        <h4 class="text-lg font-semibold text-white">VBYLD 2026 Online Quiz</h4>
+                        <p class="text-blue-400 text-sm">Issued by: Ministry of Youth Affairs & Sports (MYBharat)</p>
+                        <p class="text-gray-500 text-xs mt-1">Participation in a national level dialogue and quiz on development.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 8. Contact Section -->
+        <section id="contact" class="py-10 mb-12 bg-gray-800 rounded-xl shadow-2xl border border-gray-700">
+            <h3 class="text-center text-3xl font-bold text-white mb-8">Get In Touch</h3>
+            <div class="grid md:grid-cols-2 max-w-3xl mx-auto gap-8 p-6">
+                <div class="flex items-center space-x-3 text-gray-300">
+                    <i data-lucide="phone" class="w-5 h-5 text-blue-400"></i>
+                    <span class="font-semibold">+91 - 8185869831</span>
+                </div>
+                <div class="flex items-center space-x-3 text-gray-300">
+                    <i data-lucide="mail" class="w-5 h-5 text-blue-400"></i>
+                    <span class="font-semibold">rangareddysure1@gmail.com</span>
+                </div>
+                <div class="flex items-center space-x-3 text-gray-300">
+                    <i data-lucide="map-pin" class="w-5 h-5 text-blue-400"></i>
+                    <span class="font-semibold">Andhra Pradesh, India</span>
+                </div>
+                <div class="flex items-center space-x-3 text-gray-300">
+                    <i data-lucide="linkedin" class="w-5 h-5 text-blue-400"></i>
+                    <a href="#" class="font-semibold hover:text-blue-400 transition duration-300">/rangareddysure</a> 
+                    <!-- Replace # with actual LinkedIn URL -->
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-900 border-t border-gray-800 py-6">
+        <div class="max-w-7xl mx-auto px-4 text-center text-sm text-gray-500">
+            &copy; 2025 Ranga Reddy Sure. Designed and Enhanced with Gemini AI.
+        </div>
+    </footer>
+
+    <script>
+        // Initialize Lucide icons after the DOM is loaded
+        lucide.createIcons();
+    </script>
+</body>
+</html>
